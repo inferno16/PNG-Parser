@@ -9,6 +9,6 @@ Goals:
 * Get familiar with the Visual Studio's cross-project dependancies (This project uses the class [Binary] as a static library)
 * Understand how compression works and in paticular the DEFLATE algorithm
 * Create a working PNG reader
-* Inprove my C++ programming skills
+* Improve my C++ programming skills
 
 [Binary]: https://github.com/inferno16/BinaryData
