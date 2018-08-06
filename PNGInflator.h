@@ -1,9 +1,9 @@
 #pragma once
 #include <Binary.h>
-#include <math.h>
 #include <iostream>
-#include <map>
-#include <functional>
+#include <set>
+#include <algorithm> // used for std::transform()
+#include <iterator> // used for std::inserter()
 
 #define CM_MASK 0x0F
 #define CINFO_MASK 0xF0
@@ -20,6 +20,7 @@
 
 extern uint32_t LengthsOrder[19];
 
+
 struct Node {
 	Node(uint32_t val) : value(val), left(nullptr), right(nullptr) {}
 	Node() : Node(0) {}
@@ -29,7 +30,28 @@ struct Node {
 	Node* right;
 };
 
-typedef std::multimap<uint32_t, Node*, std::greater<uint32_t>> LengthsMap;
+typedef std::pair<uint32_t, Node*> LengthPair;
+
+struct greater_node {
+	bool operator() (const LengthPair& lhs, const LengthPair& rhs) const
+	{
+		if (lhs.first > rhs.first)
+			return true;
+		else if (lhs.first == rhs.first)
+		{
+			// Implying that both the left and the right branch are either nullptr or pointer to Node
+			if (lhs.second->left == nullptr && rhs.second->left != nullptr)
+				return true;
+			else if (lhs.second->left != nullptr && rhs.second->left == nullptr)
+				return false;
+			else if (lhs.second->value < rhs.second->value) 
+				return true;
+		}
+		return false;
+	}
+};
+
+typedef std::multiset<LengthPair, greater_node> LengthsSet;
 
 enum class CompressionMethod {
 	UNKNOWN = -1,
@@ -52,7 +74,7 @@ enum class BType {
 };
 
 #pragma pack(push, 1)
-struct ZLHeader{
+struct ZLHeader {
 	uint8_t CMF; // bits 0-3 is CM, 4-7 is CINFO
 	uint8_t FLG; // bits 0-4 is FCHECK, 5 is FDICT and 6-7 is FLEVEL
 };
@@ -86,11 +108,11 @@ private: // Methods
 	bool FCheckResult(const ZLHeader &header);
 	CompressionLevel GetCompressionLevel(const ZLHeader &header);
 	void DecodeHuffmanCodes();
-	Node* CreateHuffmanTree(LengthsMap values);
+	Node* CreateHuffmanTree(LengthsSet values);
 	void FreeHuffmanTree(Node* treeRoot);
 	std::vector<uint32_t> ReadLiteralsAndDistances(const Node* codeTree, uint32_t count);
 	uint32_t DecodeSymbol(const Node* codeTree);
-	
+
 
 private: // Variables
 	ZLCMF m_stCompressionInfo;

@@ -118,7 +118,7 @@ void PNGInflator::DecodeHuffmanCodes()
 	HCLEN += HCLEN_OFFSET;
 
 	// Filling the code lengths for the code length alphabet
-	LengthsMap clenLengths;
+	LengthsSet clenLengths;
 	for (size_t i = 0; i < HCLEN; i++)
 	{
 		uint32_t length = m_oData.GetBits(3);
@@ -128,11 +128,27 @@ void PNGInflator::DecodeHuffmanCodes()
 
 	Node *lenTree = CreateHuffmanTree(clenLengths);
 	std::vector<uint32_t> lit_dist = ReadLiteralsAndDistances(lenTree, HLIT + HDIST);
-	std::cout << "Read " << lit_dist.size() << " out of the " << HLIT + HDIST << " literal and distance symbols.\n";
 	FreeHuffmanTree(lenTree);
+	std::cout << "Read " << lit_dist.size() << " out of the " << HLIT + HDIST << " literal and distance symbols.\n";
+	
+	// Creating two separate vectors for the literal lengths and distance lengths
+	LengthsSet litLengths;
+	LengthsSet distLengths;
+	//std::vector<std::pair<uint32_t, Node*>> litLengths(HLIT);
+	//std::vector<uint32_t> distLengths(lit_dist.begin() + HLIT, lit_dist.end());
+	size_t index = 0;
+	std::vector<uint32_t>::iterator litEnd = lit_dist.begin() + HLIT;
+	std::transform(lit_dist.begin(), litEnd, std::inserter(litLengths, litLengths.begin()), [&index](const uint32_t& len) {
+		return std::make_pair(len, new Node(index++));
+	});
+	index = 0;
+	std::transform(litEnd, lit_dist.end(), std::inserter(distLengths, distLengths.begin()), [&index](const uint32_t &len) {
+		return std::make_pair(len, new Node(index++));
+	});
+	Node *litLenTree = CreateHuffmanTree(litLengths);
 }
 
-Node* PNGInflator::CreateHuffmanTree(LengthsMap values)
+Node* PNGInflator::CreateHuffmanTree(LengthsSet values)
 {
 	// Creating the Huffman tree using a multimap with key - the level of the node and value - the node data  
 	uint32_t currLevel = 0;
