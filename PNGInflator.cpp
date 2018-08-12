@@ -4,59 +4,75 @@ uint32_t LengthsOrder[19] = { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13
 
 PNGInflator::PNGInflator()
 	:m_uWindowSize(0)
-{}
+{
+	m_pLitDist.first = GenerateStaticLitLen();
+	m_pLitDist.second = GenerateStaticDist();
+}
 
 
 PNGInflator::~PNGInflator()
-{}
+{
+	FreeHuffmanTree(m_pLitDist.first);
+	FreeHuffmanTree(m_pLitDist.second);
+}
 
 Binary PNGInflator::Decompress(Binary compressedData)
 {
 	m_oData = compressedData;
 	ReadHeaders();
+	m_oLookback.SetData(m_oData.GetData());
 	return DecompressData();
 }
 
 Binary PNGInflator::DecompressData()
 {
-	// Read the chunk header
-	bool BFINAL = (m_oData.GetBits(1) == 1);
-	BType BTYPE = (BType)m_oData.GetBits(2);
+	bool BFINAL;
+	Binary data;
 
+	do {
+		// Read the chunk header
+		BFINAL = (m_oData.GetBits(1) == 1);
+		BType BTYPE = (BType)m_oData.GetBits(2);
 
-	switch (BTYPE)
-	{
-	case BType::UNCOMPRESSED:
-	{
-		std::cout << "Data is not compressed!\n";
-		m_oData.FlushBits(); // Discarding the remaining unused bits in the byte
+		switch (BTYPE)
+		{
+		case BType::UNCOMPRESSED:
+		{
+			std::cout << "Data is not compressed!\n";
+			m_oData.FlushBits(); // Discarding the remaining unused bits in the byte
 
-		// Reading the LEN and NLEN fields
-		uint16_t LEN, NLEN;
-		m_oData.ReadData((byte_t*)&LEN, sizeof(LEN));
-		m_oData.ReadData((byte_t*)&NLEN, sizeof(NLEN));
+			// Reading the LEN and NLEN fields
+			uint16_t LEN, NLEN;
+			m_oData.ReadData((byte_t*)&LEN, sizeof(LEN));
+			m_oData.ReadData((byte_t*)&NLEN, sizeof(NLEN));
 
-		if (LEN != (uint16_t)~NLEN) {
-			throw "LEN field doesn't match the copliment of NLEN!";
+			if (LEN != (uint16_t)~NLEN) {
+				throw "LEN field doesn't match the copliment of NLEN!";
+			}
+
+			// Extracting the data
+			binary_t vec(LEN);
+			m_oData.ReadData(vec.data(), LEN);
+			data.AppendData(vec);
 		}
-
-		// Extracting the data
-		binary_t vec(LEN);
-		m_oData.ReadData(vec.data(), LEN);
-		return Binary(vec);
-	}
-	case BType::STATIC:
-		std::cout << "Data is compressed using static Huffman codes!\n";
-		break;
-	case BType::DYNAMIC:
-		std::cout << "Data is compressed using dynamic Huffman codes!\n";
-		DecodeHuffmanCodes();
-		break;
-	default:
-		std::cerr << "Unsupported BTYPE of " << (uint32_t)BTYPE << " found!\n";
-		exit(1);
-	}
-	return Binary();
+		case BType::STATIC:
+			std::cout << "Data is compressed using static Huffman codes!\n";
+			data.AppendData(DecodeBlock(m_pLitDist));
+			break;
+		case BType::DYNAMIC: {
+			std::cout << "Data is compressed using dynamic Huffman codes!\n";
+			TreePair codes = DecodeHuffmanCodes();
+			data.AppendData(DecodeBlock(codes));
+			FreeHuffmanTree(codes.first);
+			FreeHuffmanTree(codes.second);
+			break;
+		}
+		default:
+			std::cerr << "Unsupported BTYPE of " << (uint32_t)BTYPE << " found!\n";
+			exit(1);
+		}
+	} while (!BFINAL);
+	return data;
 }
 
 void PNGInflator::ReadHeaders()
@@ -80,7 +96,7 @@ void PNGInflator::FillCMF(const ZLHeader &header)
 		std::cout << "CINFO is " << m_stCompressionInfo.CINFO << ", while the maximum allowed value is 7!\n";
 		return;
 	}
-	m_uWindowSize = std::pow(2, m_stCompressionInfo.CINFO + 8);
+	m_uWindowSize = (uint32_t)std::pow(2, m_stCompressionInfo.CINFO + 8);
 }
 
 void PNGInflator::FillFLG(const ZLHeader &header)
@@ -107,7 +123,7 @@ CompressionLevel PNGInflator::GetCompressionLevel(const ZLHeader &header)
 	return (CompressionLevel)level;
 }
 
-void PNGInflator::DecodeHuffmanCodes()
+TreePair PNGInflator::DecodeHuffmanCodes()
 {
 	// Reading the number of literal, distance and code length codes
 	uint32_t HLIT = m_oData.GetBits(5);
@@ -134,18 +150,37 @@ void PNGInflator::DecodeHuffmanCodes()
 	// Creating two separate vectors for the literal lengths and distance lengths
 	LengthsSet litLengths;
 	LengthsSet distLengths;
-	//std::vector<std::pair<uint32_t, Node*>> litLengths(HLIT);
-	//std::vector<uint32_t> distLengths(lit_dist.begin() + HLIT, lit_dist.end());
-	size_t index = 0;
-	std::vector<uint32_t>::iterator litEnd = lit_dist.begin() + HLIT;
-	std::transform(lit_dist.begin(), litEnd, std::inserter(litLengths, litLengths.begin()), [&index](const uint32_t& len) {
-		return std::make_pair(len, new Node(index++));
-	});
-	index = 0;
-	std::transform(litEnd, lit_dist.end(), std::inserter(distLengths, distLengths.begin()), [&index](const uint32_t &len) {
-		return std::make_pair(len, new Node(index++));
-	});
-	Node *litLenTree = CreateHuffmanTree(litLengths);
+	
+	// Filling the literals LengthSet from the lit_dist vector
+	LenghtsSetFromRange(litLengths, lit_dist.begin(), lit_dist.begin() + HLIT);
+
+	// Filling the distances LengthSet from the lit_dist vector
+	LenghtsSetFromRange(distLengths, lit_dist.begin() + HLIT, lit_dist.end());
+	
+	// Creating the literal code tree
+	Node *litTree = CreateHuffmanTree(litLengths);
+
+	// Creating the distace code tree
+	Node *distTree;
+	if (distLengths.size() == 1) {
+		if (distLengths.begin()->first == 0) {
+			distTree = nullptr;
+		}
+		else if (distLengths.begin()->first == 1) {
+			distTree = new Node(new Node(DUMMY_CODE_VALUE), new Node(0));
+		}
+		else {
+			// ToDo: Handle cases where length > 1
+		}
+	}
+	else if(distLengths.size() > 1) {
+		distTree = CreateHuffmanTree(distLengths);
+	}
+	else {
+		// ToDo: Handle cases where size == 0
+	}
+
+	return std::make_pair(litTree, distTree);
 }
 
 Node* PNGInflator::CreateHuffmanTree(LengthsSet values)
@@ -245,4 +280,91 @@ uint32_t PNGInflator::DecodeSymbol(const Node* codeTree)
 		}
 	}
 	return currNode->value;
+}
+
+uint32_t PNGInflator::DecodeLength(const uint32_t &symbol)
+{
+	if (symbol <= 256 || symbol > 285) {
+		std::cerr << "Invalid symbol for length(" << symbol << ")!\n";
+		exit(1);
+	}
+	if (symbol < 265) {
+		return symbol - 254; // This gives us the length
+	}
+	else if (symbol == 285) {
+		return 285;
+	}
+	else {
+		uint32_t extraBits = (symbol - (265 - 4)) / 4;
+		return ((((symbol - 265) % 4) + 4) << extraBits) + 3 + m_oData.GetBits(extraBits);
+	}
+}
+
+uint32_t PNGInflator::DecodeDistance(const uint32_t & symbol)
+{
+	if (symbol < 0 || symbol > 29) {
+		std::cerr << "Invalid symbol for distance(" << symbol << ")!\n";
+		exit(1);
+	}
+	if (symbol < 4) {
+		return symbol + 1;
+	}
+	else {
+		uint32_t extraBits = (symbol - (4 - 2)) / 2;
+		return ((((symbol - 4) % 2) + 2) << extraBits) + 1 + m_oData.GetBits(extraBits);
+	}
+}
+
+Binary PNGInflator::DecodeBlock(const TreePair& alphabets)
+{
+	Binary data;
+	do
+	{
+		uint32_t sym = DecodeSymbol(alphabets.first); // Reading symbol from the literal/length tree
+		if (sym == 256) { // End of block
+			break;
+		}
+		else if(sym <= 255) { // Literal byte
+			byte_t byte = (byte_t)sym;
+			data.AppendData((byte_t*)&byte, sizeof(byte));
+		}
+		else { // Offset distance and length
+			if (alphabets.second == nullptr) {
+				std::cerr << "Distance alphabet contains 0 entries, but symbol " << sym << " was found in the stream!\n";
+				exit(1);
+			}
+			uint32_t len = DecodeLength(sym);
+			uint32_t dist = DecodeDistance(DecodeSymbol(alphabets.second)); // Reading a symbol from the distance tree and parsing it
+			// ToDo: Implement the lookback
+		}
+	} while (true);
+	return data;
+}
+
+Node * PNGInflator::GenerateStaticLitLen()
+{
+	std::vector<uint32_t> temp(288);
+	std::fill(temp.begin(), temp.begin() + 144, 8); // Elements 0-143 have value of 8
+	std::fill(temp.begin() + 144, temp.begin() + 256, 9); // Elements 144-255 have value of 9
+	std::fill(temp.begin() + 256, temp.begin() + 280, 7); // Elements 256-279 have value of 7
+	std::fill(temp.begin() + 280, temp.end(), 8); // Elements 280-287 have value of 8
+	LengthsSet litLen;
+	LenghtsSetFromRange(litLen, temp.begin(), temp.end());
+	return CreateHuffmanTree(litLen);
+}
+
+Node * PNGInflator::GenerateStaticDist()
+{
+	std::vector<uint32_t> temp(32, 5); // Vector of 32 elemnts with value 5
+	LengthsSet distLen;
+	LenghtsSetFromRange(distLen, temp.begin(), temp.end());
+	return CreateHuffmanTree(distLen);
+}
+
+void PNGInflator::LenghtsSetFromRange(LengthsSet &set, const std::vector<uint32_t>::iterator &begin, const std::vector<uint32_t>::iterator &end)
+{
+	uint32_t index = 0;
+	std::transform(begin, end, std::inserter(set, set.begin()), [&index](const uint32_t& len) {
+		return std::make_pair(len, new Node(index++));
+	});
 }

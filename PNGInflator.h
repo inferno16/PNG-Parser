@@ -2,7 +2,7 @@
 #include <Binary.h>
 #include <iostream>
 #include <set>
-#include <algorithm> // used for std::transform()
+#include <algorithm> // used for std::transform() and std::fill()
 #include <iterator> // used for std::inserter()
 
 #define CM_MASK 0x0F
@@ -16,6 +16,8 @@
 #define HCLEN_OFFSET 4
 
 #define CLEN_LEN_COUNT 19
+
+#define DUMMY_CODE_VALUE UINT32_MAX
 
 
 extern uint32_t LengthsOrder[19];
@@ -31,6 +33,7 @@ struct Node {
 };
 
 typedef std::pair<uint32_t, Node*> LengthPair;
+typedef std::pair<Node*, Node*> TreePair;
 
 struct greater_node {
 	bool operator() (const LengthPair& lhs, const LengthPair& rhs) const
@@ -107,16 +110,21 @@ private: // Methods
 	void FillFLG(const ZLHeader &header);
 	bool FCheckResult(const ZLHeader &header);
 	CompressionLevel GetCompressionLevel(const ZLHeader &header);
-	void DecodeHuffmanCodes();
+	TreePair DecodeHuffmanCodes();
 	Node* CreateHuffmanTree(LengthsSet values);
 	void FreeHuffmanTree(Node* treeRoot);
 	std::vector<uint32_t> ReadLiteralsAndDistances(const Node* codeTree, uint32_t count);
 	uint32_t DecodeSymbol(const Node* codeTree);
-
+	Binary DecodeBlock(const TreePair &alphabets);
+	Node* GenerateStaticLitLen();
+	Node* GenerateStaticDist();
+	void LenghtsSetFromRange(LengthsSet &set, const std::vector<uint32_t>::iterator &begin, const std::vector<uint32_t>::iterator &end);
 
 private: // Variables
 	ZLCMF m_stCompressionInfo;
 	ZLFLG m_stFlags;
 	uint32_t m_uWindowSize;
 	Binary m_oData;
+	TreePair m_pLitDist;
+	Binary m_oLookback;
 };
