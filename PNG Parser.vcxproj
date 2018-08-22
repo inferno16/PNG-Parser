@@ -123,10 +123,12 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="PNG.cpp" />
     <ClCompile Include="PNGInflator.cpp" />
+    <ClCompile Include="RingBuffer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="PNG.h" />
     <ClInclude Include="PNGInflator.h" />
+    <ClInclude Include="RingBuffer.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\BinaryData\BinaryData\BinaryData.vcxproj">

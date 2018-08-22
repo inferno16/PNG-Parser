@@ -3,7 +3,7 @@
 uint32_t LengthsOrder[19] = { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
 
 PNGInflator::PNGInflator()
-	:m_uWindowSize(0)
+	:m_uWindowSize(0), m_oLookback(32 * 1024)
 {
 	m_pLitDist.first = GenerateStaticLitLen();
 	m_pLitDist.second = GenerateStaticDist();
@@ -20,7 +20,6 @@ Binary PNGInflator::Decompress(Binary compressedData)
 {
 	m_oData = compressedData;
 	ReadHeaders();
-	m_oLookback.SetData(m_oData.GetData());
 	return DecompressData();
 }
 
@@ -54,6 +53,7 @@ Binary PNGInflator::DecompressData()
 			binary_t vec(LEN);
 			m_oData.ReadData(vec.data(), LEN);
 			data.AppendData(vec);
+			return data;
 		}
 		case BType::STATIC:
 			std::cout << "Data is compressed using static Huffman codes!\n";
@@ -150,7 +150,7 @@ TreePair PNGInflator::DecodeHuffmanCodes()
 	// Creating two separate vectors for the literal lengths and distance lengths
 	LengthsSet litLengths;
 	LengthsSet distLengths;
-	
+
 	// Filling the literals LengthSet from the lit_dist vector
 	LenghtsSetFromRange(litLengths, lit_dist.begin(), lit_dist.begin() + HLIT);
 
@@ -325,8 +325,8 @@ Binary PNGInflator::DecodeBlock(const TreePair& alphabets)
 			break;
 		}
 		else if(sym <= 255) { // Literal byte
-			byte_t byte = (byte_t)sym;
-			data.AppendData((byte_t*)&byte, sizeof(byte));
+			data.AppendData((byte_t)sym);
+			m_oLookback.AppendByte((byte_t)sym);
 		}
 		else { // Offset distance and length
 			if (alphabets.second == nullptr) {
@@ -335,7 +335,7 @@ Binary PNGInflator::DecodeBlock(const TreePair& alphabets)
 			}
 			uint32_t len = DecodeLength(sym);
 			uint32_t dist = DecodeDistance(DecodeSymbol(alphabets.second)); // Reading a symbol from the distance tree and parsing it
-			// ToDo: Implement the lookback
+			m_oLookback.WriteToObject(dist, len, data); // Copying data from the lookback dictionary
 		}
 	} while (true);
 	return data;

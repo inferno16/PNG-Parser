@@ -4,6 +4,7 @@
 #include <set>
 #include <algorithm> // used for std::transform() and std::fill()
 #include <iterator> // used for std::inserter()
+#include "RingBuffer.h"
 
 #define CM_MASK 0x0F
 #define CINFO_MASK 0xF0
@@ -24,10 +25,11 @@ extern uint32_t LengthsOrder[19];
 
 
 struct Node {
-	Node(uint32_t val) : value(val), left(nullptr), right(nullptr) {}
+	Node(uint32_t val) : value(val), depth(0), left(nullptr), right(nullptr) {}
 	Node() : Node(0) {}
-	Node(Node* l, Node* r) :value(l->value + r->value), left(l), right(r) {}
+	Node(Node* l, Node* r) :value(l->value + r->value), depth(std::max(l->depth, r->depth) + 1), left(l), right(r) {}
 	const uint32_t value;
+	const uint32_t depth;
 	Node* left;
 	Node* right;
 };
@@ -42,12 +44,14 @@ struct greater_node {
 			return true;
 		else if (lhs.first == rhs.first)
 		{
-			// Implying that both the left and the right branch are either nullptr or pointer to Node
-			if (lhs.second->left == nullptr && rhs.second->left != nullptr)
+			// Assuming that both the left and the right branch are either nullptr or pointer to Node
+			if (lhs.second->left == nullptr && rhs.second->left != nullptr) // Left is leaf and right is branch
 				return true;
-			else if (lhs.second->left != nullptr && rhs.second->left == nullptr)
+			else if (lhs.second->left != nullptr && rhs.second->left == nullptr) // Left is branch and right is leaf
 				return false;
-			else if (lhs.second->value < rhs.second->value) 
+			else if (lhs.second->left != nullptr && rhs.second->left != nullptr) // Both are branches
+				return (lhs.second->depth < rhs.second->depth);
+			else if (lhs.second->value < rhs.second->value) // Both are leafs
 				return true;
 		}
 		return false;
@@ -115,6 +119,8 @@ private: // Methods
 	void FreeHuffmanTree(Node* treeRoot);
 	std::vector<uint32_t> ReadLiteralsAndDistances(const Node* codeTree, uint32_t count);
 	uint32_t DecodeSymbol(const Node* codeTree);
+	uint32_t DecodeLength(const uint32_t &symbol);
+	uint32_t DecodeDistance(const uint32_t &symbol);
 	Binary DecodeBlock(const TreePair &alphabets);
 	Node* GenerateStaticLitLen();
 	Node* GenerateStaticDist();
@@ -126,5 +132,5 @@ private: // Variables
 	uint32_t m_uWindowSize;
 	Binary m_oData;
 	TreePair m_pLitDist;
-	Binary m_oLookback;
+	RingBuffer m_oLookback;
 };

@@ -24,12 +24,18 @@
     <ClCompile Include="PNGInflator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="RingBuffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="PNG.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="PNGInflator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RingBuffer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
