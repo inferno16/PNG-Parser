@@ -30,7 +30,8 @@ Binary PNGInflator::DecompressData()
 
 	do {
 		// Read the chunk header
-		BFINAL = (m_oData.GetBits(1) == 1);
+		int bf = m_oData.GetBits(1);
+		BFINAL = (bf == 1);
 		BType BTYPE = (BType)m_oData.GetBits(2);
 
 		switch (BTYPE)
@@ -53,7 +54,7 @@ Binary PNGInflator::DecompressData()
 			binary_t vec(LEN);
 			m_oData.ReadData(vec.data(), LEN);
 			data.AppendData(vec);
-			return data;
+			break;
 		}
 		case BType::STATIC:
 			std::cout << "Data is compressed using static Huffman codes!\n";
