@@ -65,13 +65,20 @@ void PNG::ReadFile()
 
 	// ToDo: The code below is not part of the "file reading" so it might as well be in a separate method
 	PNGInflator inf;
-	Binary decompressedData = inf.Decompress(m_stIDAT.data);
+	Binary decompressedData;
+	{
+		decompressedData = inf.Decompress(m_stIDAT.data);
+	}
 	if (decompressedData.GetSize() == 0) {
 		std::cout << "Couldn't decompress the stream!\n";
 		return;
 	}
-
-	auto slv = ReadScanlines(decompressedData);
+	std::ofstream f("testImg.bin", std::ios::binary);
+	decompressedData.WriteToStream(f);
+	std::vector<Scanline> slv;
+	ReadScanlines(slv, decompressedData);
+	return;
+	decompressedData.~Binary();
 	ApplyFilters(slv);
 	std::cout << "\nRaw pixel data:\n";
 	PrintHexPixels(slv, std::cout);
@@ -244,23 +251,24 @@ const char * PNG::GetColorTypeString(const ColorType &colorType)
 	return nullptr;
 }
 
-std::vector<Scanline> PNG::ReadScanlines(Binary & data)
+void PNG::ReadScanlines(std::vector<Scanline> &slv, Binary & data)
 {
 	std::cout << "Reading scanlines from stream...\n";
-	std::vector<Scanline> slv;
+	slv.resize(m_stHeaders.height);
 	size_t pixelSize = (m_stHeaders.colorType == (uint8_t)ColorType::TRUECOLOR) ? 3 : 4;
+	size_t slDataSize = pixelSize * m_stHeaders.width;
+	binary_t tempPixels(slDataSize);
 	Scanline sl;
-	Pixel p(pixelSize);
 	for (size_t i = 0; i < m_stHeaders.height; i++) {
 		data.ReadData((byte_t*)&sl.filter, sizeof(sl.filter));
-		for (size_t j = 0; j < m_stHeaders.width; j++) {
-			data.ReadData(p.bytes.data(), pixelSize);
-			sl.pixels.push_back(p);
-		}
-		slv.push_back(sl);
+		data.ReadData(tempPixels.data(), slDataSize);
+		sl.FillPixels(tempPixels, pixelSize);
+		slv[i] = sl;
+		//tempPixels.erase(tempPixels.begin(), tempPixels.end());
+		binary_t(slDataSize).swap(tempPixels);
 		sl.pixels.erase(sl.pixels.begin(), sl.pixels.end());
 	}
-	return slv;
+	//return slv;
 }
 
 void PNG::ApplyFilters(std::vector<Scanline>& scanlines)

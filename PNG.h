@@ -75,6 +75,15 @@ struct Pixel {
 struct Scanline {
 	byte_t filter;
 	std::vector<Pixel> pixels;
+	void FillPixels(const binary_t &pixelData, const size_t &pixelSize) {
+		pixels.resize(pixelData.size() / pixelSize);
+		binary_t::const_iterator it = pixelData.begin();
+		size_t i = 0;
+		for (; it != pixelData.end(); it += pixelSize) {
+			pixels[i].bytes.assign(it, it + pixelSize);
+			i++;
+		}
+	}
 };
 #pragma pack(pop)
 
@@ -136,7 +145,7 @@ private: // Methods
 	void ParseHeaders(Chunk &IHDR);
 	Chunk MergeDataChunks(std::vector<Chunk> &IDATs);
 	const char *GetColorTypeString(const ColorType &colorType);
-	std::vector<Scanline> ReadScanlines(Binary &data);
+	void ReadScanlines(std::vector<Scanline> &slv, Binary &data);
 	void ApplyFilters(std::vector<Scanline> &scanlines);
 	void ApplyFilterToScanline(std::vector<Scanline> &scanlines, const size_t &lineNum, byte_t(PNG::* fn)(const std::vector<Scanline>&, const size_t&, const size_t&, const size_t &));
 	// Returns the value from the same channel(byte) in the left pixel(pixel "a") or 0 if the curent pixel is the leftmost 

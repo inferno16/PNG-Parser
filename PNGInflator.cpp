@@ -30,8 +30,7 @@ Binary PNGInflator::DecompressData()
 
 	do {
 		// Read the chunk header
-		int bf = m_oData.GetBits(1);
-		BFINAL = (bf == 1);
+		BFINAL = (m_oData.GetBits(1) == 1);
 		BType BTYPE = (BType)m_oData.GetBits(2);
 
 		switch (BTYPE)
@@ -61,9 +60,10 @@ Binary PNGInflator::DecompressData()
 			data.AppendData(DecodeBlock(m_pLitDist));
 			break;
 		case BType::DYNAMIC: {
-			std::cout << "Data is compressed using dynamic Huffman codes!\n";
+			//std::cout << "Data is compressed using dynamic Huffman codes!\n";
 			TreePair codes = DecodeHuffmanCodes();
 			data.AppendData(DecodeBlock(codes));
+			m_oData.ShrinkToFit();
 			FreeHuffmanTree(codes.first);
 			FreeHuffmanTree(codes.second);
 			break;
@@ -146,7 +146,7 @@ TreePair PNGInflator::DecodeHuffmanCodes()
 	Node *lenTree = CreateHuffmanTree(clenLengths);
 	std::vector<uint32_t> lit_dist = ReadLiteralsAndDistances(lenTree, HLIT + HDIST);
 	FreeHuffmanTree(lenTree);
-	std::cout << "Read " << lit_dist.size() << " out of the " << HLIT + HDIST << " literal and distance symbols.\n";
+	//std::cout << "Read " << lit_dist.size() << " out of the " << HLIT + HDIST << " literal and distance symbols.\n";
 	
 	// Creating two separate vectors for the literal lengths and distance lengths
 	LengthsSet litLengths;
@@ -327,7 +327,7 @@ Binary PNGInflator::DecodeBlock(const TreePair& alphabets)
 		}
 		else if(sym <= 255) { // Literal byte
 			data.AppendData((byte_t)sym);
-			m_oLookback.AppendByte((byte_t)sym);
+			m_oLookback.AppendData((byte_t)sym);
 		}
 		else { // Offset distance and length
 			if (alphabets.second == nullptr) {
@@ -368,4 +368,7 @@ void PNGInflator::LenghtsSetFromRange(LengthsSet &set, const std::vector<uint32_
 	std::transform(begin, end, std::inserter(set, set.begin()), [&index](const uint32_t& len) {
 		return std::make_pair(len, new Node(index++));
 	});
+
+	while (set.rbegin()->first == 0)
+		set.erase(--(set.end()));
 }
