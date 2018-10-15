@@ -293,7 +293,7 @@ uint32_t PNGInflator::DecodeLength(const uint32_t &symbol)
 		return symbol - 254; // This gives us the length
 	}
 	else if (symbol == 285) {
-		return 285;
+		return 258;
 	}
 	else {
 		uint32_t extraBits = (symbol - (265 - 4)) / 4;
@@ -335,7 +335,12 @@ Binary PNGInflator::DecodeBlock(const TreePair& alphabets)
 				exit(1);
 			}
 			uint32_t len = DecodeLength(sym);
-			uint32_t dist = DecodeDistance(DecodeSymbol(alphabets.second)); // Reading a symbol from the distance tree and parsing it
+			if (len < 3 || len > 258) {
+				std::cerr << "Length is " << len << " while the valid range is 3 >= len <= 258!\n";
+				exit(1);
+			}
+			uint32_t distCode = DecodeSymbol(alphabets.second); // Reading a symbol from the distance tree
+			uint32_t dist = DecodeDistance(distCode); // Parsing the read symbol
 			m_oLookback.WriteToObject(dist, len, data); // Copying data from the lookback dictionary
 		}
 	} while (true);
@@ -368,4 +373,8 @@ void PNGInflator::LenghtsSetFromRange(LengthsSet &set, const std::vector<uint32_
 	std::transform(begin, end, std::inserter(set, set.begin()), [&index](const uint32_t& len) {
 		return std::make_pair(len, new Node(index++));
 	});
+
+	// Remove zero lenghts
+	while (set.rbegin()->first == 0)
+		set.erase(--(set.end()));
 }
